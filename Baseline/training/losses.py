@@ -29,15 +29,15 @@ class GANLoss(object):
 
 class AttackLoss(object):
     def __init__(self, resnet, batch_size, device, target_class=569, criterion=nn.CrossEntropyLoss()):
-        self.resnet = resnet
+        self.model = resnet
         self.criterion = criterion
         self.target_class = target_class
         self.device = device
         self.batch_size = batch_size
 
     def loss(self, fake_output):
-        loss = self.criterion(self.resnet(fake_output), torch.full((self.batch_size,),
-                                                                   self.target_class, dtype=torch.long,
-                                                                   device=self.device).squeeze())
+        loss = self.criterion(self.model(fake_output), torch.full((self.batch_size,),
+                                                                  self.target_class, dtype=torch.long,
+                                                                  device=self.device).squeeze())
         loss.backward()
         return loss.mean()
