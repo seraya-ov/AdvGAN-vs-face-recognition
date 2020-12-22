@@ -7,7 +7,7 @@ from torch.nn import functional as F
 class Plotter(object):
     def __init__(self, generator_model, resnet_model, device):
         self.generator_model = generator_model
-        self.resnet_model = resnet_model
+        self.attack_model = resnet_model
         self.noise = torch.randn(4 * 4, self.generator_model.noise_dim, 1, 1, requires_grad=True, device=device)
         self.device = device
 
@@ -15,8 +15,8 @@ class Plotter(object):
         self.generator_model.eval()
         inputs = test_images
         noise = self.generator_model(inputs)
-        true_labels = np.argmax(F.softmax(self.resnet_model(inputs), -1).cpu().detach().numpy(), axis=1)
-        fake_labels = np.argmax(F.softmax(self.resnet_model(inputs + noise), -1).cpu().detach().numpy(), axis=1)
+        true_labels = np.argmax(F.softmax(self.attack_model(inputs), -1).cpu().detach().numpy(), axis=1)
+        fake_labels = np.argmax(F.softmax(self.attack_model(inputs + noise), -1).cpu().detach().numpy(), axis=1)
         num = test_images.shape[0]**0.5
 
         plt.figure(figsize=(10, 10))

@@ -1,10 +1,5 @@
 import torch
-from torch import nn
 import numpy as np
-
-
-# from IPython.display import clear_output
-# from .plots import Plotter
 
 
 class Trainer(object):
@@ -12,7 +7,7 @@ class Trainer(object):
                  discriminator,
                  attacked_model,
                  gan_loss,
-                 resnet_loss,
+                 attack_loss,
                  discriminator_optimizer,
                  generator_optimizer,
                  device,
@@ -28,7 +23,7 @@ class Trainer(object):
 
         self.device = device
         self.gan_loss = gan_loss
-        self.resnet_loss = resnet_loss
+        self.attack_loss = attack_loss
 
         self.discriminator_optimizer = discriminator_optimizer
         self.generator_optimizer = generator_optimizer
@@ -42,31 +37,31 @@ class Trainer(object):
         batch = batch.to(device=self.device, dtype=torch.float32)
 
         discriminator_real = self.discriminator(batch)
-        discriminator_fake = self.discriminator(batch + self.generator(batch))
+        discriminator_fake = self.discriminator((batch + self.generator(batch)) / 2)
 
         self.discriminator_optimizer.zero_grad()
 
         discriminator_loss = self.gan_loss.discriminator_loss(discriminator_real,
                                                               discriminator_fake)
-        resnet_loss = self.resnet_loss.loss(batch + self.generator(batch))
+        attack_loss = self.attack_loss.loss((batch + self.generator(batch)) / 2)
 
         self.discriminator_optimizer.step()
 
         disc_loss = discriminator_loss.item()
-        resnet_loss = resnet_loss.item()
+        attack_loss = attack_loss.item()
 
-        generator_fake = self.discriminator(batch + self.generator(batch))
+        generator_fake = self.discriminator((batch + self.generator(batch)) / 2)
 
         self.generator_optimizer.zero_grad()
 
         generator_loss = self.gan_loss.generator_loss(generator_fake)
-        resnet_loss += self.resnet_loss.loss(batch + self.generator(batch)).item()
+        attack_loss += self.attack_loss.loss((batch + self.generator(batch)) / 2).item()
 
         self.generator_optimizer.step()
 
         gen_loss = generator_loss.item()
 
-        return gen_loss, disc_loss, resnet_loss / 2
+        return gen_loss, disc_loss, attack_loss / 2
 
     def train(self, train_data, epochs):
         generator_loss = []
@@ -81,9 +76,6 @@ class Trainer(object):
                 generator_loss_epoch.append(loss[0])
                 discriminator_loss_epoch.append(loss[1])
                 resnet_loss_epoch.append(loss[2])
-                # if i % 50 == 0:
-                #     clear_output(wait=True)
-                #     self.plotter.plot_generator_results(random=False)
 
             generator_loss.append(np.array(generator_loss_epoch).mean())
             discriminator_loss.append(np.array(discriminator_loss_epoch).mean())

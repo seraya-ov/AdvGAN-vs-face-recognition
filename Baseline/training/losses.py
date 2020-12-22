@@ -27,7 +27,7 @@ class GANLoss(object):
         return fake.mean()
 
 
-class ResNetLoss(object):
+class AttackLoss(object):
     def __init__(self, resnet, batch_size, device, target_class=569, criterion=nn.CrossEntropyLoss()):
         self.resnet = resnet
         self.criterion = criterion
