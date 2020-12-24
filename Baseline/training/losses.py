@@ -28,7 +28,7 @@ class GANLoss(object):
 
 
 class AttackLoss(object):
-    def __init__(self, resnet, batch_size, device, target_class=569, criterion=nn.CrossEntropyLoss()):
+    def __init__(self, resnet, batch_size, device, target_class=0, criterion=nn.CrossEntropyLoss()):
         self.model = resnet
         self.criterion = criterion
         self.target_class = target_class

@@ -94,3 +94,46 @@ class Trainer(object):
                                              ))
 
         return generator_loss, discriminator_loss, resnet_loss
+
+
+class BaseClassifierTrainer(object):
+    def __init__(self, model, criterion, optimizer, device):
+        self.model = model
+        self.criterion = criterion
+        self.optimizer = optimizer
+        self.device = device
+
+    def train_one_epoch(self, batch, real_labels):
+        self.model.to(device=self.device).train()
+        batch = batch.to(device=self.device, dtype=torch.float32)
+
+        labels = self.model(batch)
+
+        self.optimizer.zero_grad()
+
+        loss = self.criterion(labels, real_labels)
+        loss.backward()
+
+        self.optimizer.step()
+
+        return loss.item()
+
+    def train(self, train_data, epochs):
+        loss = []
+        for epoch in range(epochs):
+            loss_epoch = []
+            for i, batch in enumerate(train_data):
+                step_loss = self.train_one_epoch(*batch)
+                loss_epoch.append(step_loss)
+
+            loss.append(np.array(loss_epoch).mean())
+
+            print("Epoch: {},"
+                  " Loss: {}".format(epoch,
+                                     np.array(loss_epoch).mean()))
+
+        return loss
+
+
+
+

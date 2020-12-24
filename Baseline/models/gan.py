@@ -2,7 +2,7 @@ from torch import nn
 
 
 class ConvBnReLuBlock(nn.Module):
-    def __init__(self, in_channels=3, hidden_size=32, kernel_size=4, stride=1, padding=0, transpose=True):
+    def __init__(self, in_channels=1, hidden_size=32, kernel_size=4, stride=1, padding=0, transpose=True):
         super(ConvBnReLuBlock, self).__init__()
         if transpose:
             conv = nn.ConvTranspose2d(in_channels, hidden_size, kernel_size, stride, padding, bias=False)
@@ -19,7 +19,7 @@ class ConvBnReLuBlock(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, in_channels=3, hidden_size=32, out_channels=3):
+    def __init__(self, in_channels=1, hidden_size=32, out_channels=1):
         super(Generator, self).__init__()
         self.noise_dim = in_channels
         self.model = nn.Sequential(
@@ -39,7 +39,7 @@ class Generator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, in_channels=3, image_size=224, hidden_size=32):
+    def __init__(self, in_channels=1, image_size=10, hidden_size=32):
         super(Discriminator, self).__init__()
         self.model = nn.Sequential(
 
