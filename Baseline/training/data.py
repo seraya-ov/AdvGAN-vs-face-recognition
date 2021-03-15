@@ -28,7 +28,6 @@ import os
 
 
 class FacesDataset(Dataset):
-    """Face Landmarks dataset."""
 
     def __init__(self, root_dir, transform=None):
         """
