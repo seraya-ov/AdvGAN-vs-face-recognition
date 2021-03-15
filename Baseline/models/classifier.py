@@ -2,7 +2,7 @@ from .gan import *
 
 
 class SimpleClassifier(nn.Module):
-    def __init__(self, in_channels=1, image_size=10, hidden_size=32):
+    def __init__(self, in_channels=1, image_size=10, hidden_size=32, num_classes=10):
         super(SimpleClassifier, self).__init__()
         self.model = nn.Sequential(
 
@@ -13,7 +13,7 @@ class SimpleClassifier(nn.Module):
 
             ConvBnReLuBlock(hidden_size * 4, 1, 3, 1, 1, transpose=False),
             nn.Flatten(),
-            nn.Linear(image_size * image_size, 10),
+            nn.Linear(image_size * image_size, num_classes),
         )
 
     def forward(self, batch):

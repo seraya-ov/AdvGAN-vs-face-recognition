@@ -28,16 +28,31 @@ class GANLoss(object):
 
 
 class AttackLoss(object):
-    def __init__(self, resnet, batch_size, device, target_class=0, criterion=nn.CrossEntropyLoss()):
-        self.model = resnet
+    def __init__(self, model, batch_size, device, alpha=0.5, criterion=nn.CrossEntropyLoss()):
+        self.model = model
         self.criterion = criterion
-        self.target_class = target_class
         self.device = device
         self.batch_size = batch_size
+        self.alpha = alpha
 
-    def loss(self, fake_output):
-        loss = self.criterion(self.model(fake_output), torch.full((self.batch_size,),
-                                                                  self.target_class, dtype=torch.long,
-                                                                  device=self.device).squeeze())
+    def loss(self, fake_output, labels):
+        loss = -self.alpha * self.criterion(self.model(fake_output), labels.squeeze())
+        loss.backward()
+        return loss.mean()
+
+
+class HingeLoss(object):
+    def __init__(self, model, batch_size, device, alpha=0.5, criterion=nn.HingeEmbeddingLoss()):
+        self.model = model
+        self.criterion = criterion
+        self.device = device
+        self.batch_size = batch_size
+        self.alpha = alpha
+
+    def loss(self, generated_output):
+        loss = self.alpha * self.criterion(torch.norm(generated_output.squeeze(), dim=[-1, -2]),
+                                           torch.full((self.batch_size,),
+                                                      1, dtype=torch.long,
+                                                      device=self.device).squeeze())
         loss.backward()
         return loss.mean()

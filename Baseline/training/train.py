@@ -8,6 +8,7 @@ class Trainer(object):
                  attacked_model,
                  gan_loss,
                  attack_loss,
+                 hinge_loss,
                  discriminator_optimizer,
                  generator_optimizer,
                  device,
@@ -24,13 +25,14 @@ class Trainer(object):
         self.device = device
         self.gan_loss = gan_loss
         self.attack_loss = attack_loss
+        self.hinge_loss = hinge_loss
 
         self.discriminator_optimizer = discriminator_optimizer
         self.generator_optimizer = generator_optimizer
 
         self.checkpoint_path = checkpoint_path
 
-    def train_one_epoch(self, batch):
+    def train_one_epoch(self, batch, labels):
         self.generator.to(device=self.device).train()
         self.discriminator.to(device=self.device).train()
 
@@ -41,59 +43,61 @@ class Trainer(object):
 
         self.discriminator_optimizer.zero_grad()
 
-        discriminator_loss = self.gan_loss.discriminator_loss(discriminator_real,
-                                                              discriminator_fake)
-        attack_loss = self.attack_loss.loss((batch + self.generator(batch)) / 2)
+        disc_loss = self.gan_loss.discriminator_loss(discriminator_real,
+                                                     discriminator_fake).item()
 
         self.discriminator_optimizer.step()
-
-        disc_loss = discriminator_loss.item()
-        attack_loss = attack_loss.item()
 
         generator_fake = self.discriminator((batch + self.generator(batch)) / 2)
 
         self.generator_optimizer.zero_grad()
 
-        generator_loss = self.gan_loss.generator_loss(generator_fake)
-        attack_loss += self.attack_loss.loss((batch + self.generator(batch)) / 2).item()
+        gen_loss = self.gan_loss.generator_loss(generator_fake).item()
+        attack_loss = self.attack_loss.loss((batch + self.generator(batch)) / 2, labels).item()
+        hinge_loss = self.hinge_loss.loss(self.generator(batch)).item()
 
         self.generator_optimizer.step()
 
-        gen_loss = generator_loss.item()
-
-        return gen_loss, disc_loss, attack_loss / 2
+        return gen_loss, disc_loss, attack_loss, hinge_loss
 
     def train(self, train_data, epochs):
         generator_loss = []
         discriminator_loss = []
-        resnet_loss = []
+        model_loss = []
+        hinge_loss = []
         for epoch in range(epochs):
             generator_loss_epoch = []
             discriminator_loss_epoch = []
-            resnet_loss_epoch = []
+            model_loss_epoch = []
+            hinge_loss_epoch = []
             for i, batch in enumerate(train_data):
-                loss = self.train_one_epoch(batch[0])
+                loss = self.train_one_epoch(batch[0], batch[1])
                 generator_loss_epoch.append(loss[0])
                 discriminator_loss_epoch.append(loss[1])
-                resnet_loss_epoch.append(loss[2])
+                model_loss_epoch.append(loss[2])
+                hinge_loss_epoch.append(loss[3])
 
             generator_loss.append(np.array(generator_loss_epoch).mean())
             discriminator_loss.append(np.array(discriminator_loss_epoch).mean())
-            resnet_loss.append(np.array(resnet_loss_epoch).mean())
+            model_loss.append(np.array(model_loss_epoch).mean())
+            hinge_loss.append(np.array(hinge_loss_epoch).mean())
 
             print("Epoch: {},"
                   " Generator loss: {},"
                   " Discriminator loss: {},"
-                  " ResNet loss: {},".format(epoch,
-                                             np.array(
-                                                 generator_loss_epoch).mean(),
-                                             np.array(
-                                                 discriminator_loss_epoch).mean(),
-                                             np.array(
-                                                 resnet_loss_epoch).mean(),
-                                             ))
+                  " Model loss: {},"
+                  " Hinge loss: {},".format(epoch,
+                                            np.array(
+                                                generator_loss_epoch).mean(),
+                                            np.array(
+                                                discriminator_loss_epoch).mean(),
+                                            np.array(
+                                                model_loss_epoch).mean(),
+                                            np.array(
+                                                hinge_loss_epoch).mean(),
+                                            ))
 
-        return generator_loss, discriminator_loss, resnet_loss
+        return generator_loss, discriminator_loss, model_loss, hinge_loss
 
 
 class BaseClassifierTrainer(object):
@@ -133,7 +137,3 @@ class BaseClassifierTrainer(object):
                                      np.array(loss_epoch).mean()))
 
         return loss
-
-
-
-
