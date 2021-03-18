@@ -28,10 +28,9 @@ class GANLoss(object):
 
 
 class AttackLoss(object):
-    def __init__(self, model, device, alpha=0.5, criterion=nn.CrossEntropyLoss()):
+    def __init__(self, model, alpha=0.5, criterion=nn.CrossEntropyLoss()):
         self.model = model
         self.criterion = criterion
-        self.device = device
         self.alpha = alpha
 
     def loss(self, fake_output, labels):

@@ -32,11 +32,16 @@ class Trainer(object):
 
         self.checkpoint_path = checkpoint_path
 
-    def train_one_epoch(self, batch, labels):
+    def train_one_epoch(self, batch, labels=None):
         self.generator.to(device=self.device).train()
         self.discriminator.to(device=self.device).train()
 
         batch = batch.to(device=self.device, dtype=torch.float32)
+
+        if labels is None:
+            labels = self.attacked_model(batch).argmax(dim=-1)
+
+        labels = labels.to(device=self.device)
 
         discriminator_real = self.discriminator(batch)
         discriminator_fake = self.discriminator((batch + self.generator(batch)) / 2)
@@ -71,7 +76,7 @@ class Trainer(object):
             model_loss_epoch = []
             hinge_loss_epoch = []
             for i, batch in enumerate(train_data):
-                loss = self.train_one_epoch(batch[0], batch[1])
+                loss = self.train_one_epoch(batch[0])
                 generator_loss_epoch.append(loss[0])
                 discriminator_loss_epoch.append(loss[1])
                 model_loss_epoch.append(loss[2])
