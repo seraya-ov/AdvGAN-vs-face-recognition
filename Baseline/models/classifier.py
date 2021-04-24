@@ -1,4 +1,5 @@
-from .gan import *
+from models.gan import *
+import torch.nn as nn
 
 
 class SimpleClassifier(nn.Module):
@@ -9,7 +10,6 @@ class SimpleClassifier(nn.Module):
             ConvBnReLuBlock(in_channels, hidden_size, 3, 1, 1, transpose=False),
             ConvBnReLuBlock(hidden_size, hidden_size * 2, 3, 1, 1, transpose=False),
             ConvBnReLuBlock(hidden_size * 2, hidden_size * 4, 3, 1, 1),
-            # ConvBnReLuBlock(hidden_size * 4, hidden_size * 8, 3, 1, 1),
 
             ConvBnReLuBlock(hidden_size * 4, 1, 3, 1, 1, transpose=False),
             nn.Flatten(),

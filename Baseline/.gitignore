@@ -1,3 +1,5 @@
 /notebooks/.ipynb_checkpoints/
 /.idea/
 /data/
+/notebooks/attack_gan_logdir/
+/notebooks/base_classifier_logdir/

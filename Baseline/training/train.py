@@ -1,5 +1,13 @@
-import torch
+from abc import ABC
+# from typing import Mapping, Any
+
+# import torch
 import numpy as np
+import pandas as pd
+from catalyst import dl
+# , utils
+from .losses import *
+import seaborn as sns
 
 
 class Trainer(object):
@@ -12,7 +20,8 @@ class Trainer(object):
                  discriminator_optimizer,
                  generator_optimizer,
                  device,
-                 checkpoint_path=''):
+                 checkpoint_path='',
+                 penalty=True):
 
         self.generator = generator.to(device)
         self.noise_dim = generator.noise_dim
@@ -31,6 +40,29 @@ class Trainer(object):
         self.generator_optimizer = generator_optimizer
 
         self.checkpoint_path = checkpoint_path
+        self.penalty = penalty
+
+    def gradient_penalty(self, real_samples, fake_samples):
+        """Calculates the gradient penalty loss for WGAN GP"""
+        # Random weight term for interpolation between real and fake samples
+        alpha = torch.Tensor(np.random.random((real_samples.shape[0], 1, 1, 1))).to(device=self.device)
+        # Get random interpolation between real and fake samples
+        interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+        d_interpolates = self.discriminator(interpolates)
+        fake = torch.autograd.Variable(torch.Tensor(real_samples.shape[0], 1).to(device=self.device).fill_(1.0),
+                                       requires_grad=False)
+        # Get gradient w.r.t. interpolates
+        gradients = torch.autograd.grad(
+            outputs=d_interpolates,
+            inputs=interpolates,
+            grad_outputs=fake,
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True,
+        )[0]
+        gradients = gradients.view(gradients.shape[0], -1)
+        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+        return gradient_penalty
 
     def train_one_epoch(self, batch, labels=None):
         self.generator.to(device=self.device).train()
@@ -46,10 +78,18 @@ class Trainer(object):
         discriminator_real = self.discriminator(batch)
         discriminator_fake = self.discriminator((batch + self.generator(batch)) / 2)
 
-        self.discriminator_optimizer.zero_grad()
+        if self.penalty:
+            gradient_penalty = self.gradient_penalty(batch, discriminator_fake)
 
-        disc_loss = self.gan_loss.discriminator_loss(discriminator_real,
-                                                     discriminator_fake).item()
+            self.discriminator_optimizer.zero_grad()
+
+            disc_loss = self.gan_loss.discriminator_loss((discriminator_real,
+                                                          discriminator_fake), gradient_penalty).item()
+        else:
+            self.discriminator_optimizer.zero_grad()
+
+            disc_loss = self.gan_loss.discriminator_loss(discriminator_real,
+                                                         discriminator_fake).item()
 
         self.discriminator_optimizer.step()
 
@@ -58,7 +98,7 @@ class Trainer(object):
         self.generator_optimizer.zero_grad()
 
         gen_loss = self.gan_loss.generator_loss(generator_fake).item()
-        attack_loss = self.attack_loss.loss((batch + self.generator(batch)) / 2, labels).item()
+        attack_loss = self.attack_loss.loss(self.attacked_model((batch + self.generator(batch)) / 2), labels).item()
         hinge_loss = self.hinge_loss.loss(self.generator(batch)).item()
 
         self.generator_optimizer.step()
@@ -142,3 +182,252 @@ class BaseClassifierTrainer(object):
                                      np.array(loss_epoch).mean()))
 
         return loss
+
+
+class PlotCallback(dl.Callback):
+    def __init__(self, order: int):
+        super().__init__(order)
+        self.logs = []
+
+    def on_batch_end(self, runner: "GANRunner") -> None:
+        log_path = runner._logdir
+        metrics = pd.read_csv('./{}/train.csv'.format(log_path)).plot(figsize=(10, 5))
+        mean_cols = list(filter(lambda x: 'mean' in x, metrics.columns))
+        std_cols = list(filter(lambda x: 'mean' in x, metrics.columns))
+        cols = list(filter(lambda x: ((x not in mean_cols) and (x not in std_cols)), metrics.columns))
+        sns.lineplot(data=metrics[cols])
+
+
+class GANRunner(dl.Runner, ABC):
+    def __init__(self, attacked_model, batch_size, device, logdir, gradient_penalty=True):
+        super().__init__()
+        self._gradient_penalty = gradient_penalty
+        self._device = device
+        self._batch_size = batch_size
+        self._attacked_model = attacked_model
+        self._logdir = logdir
+
+    def get_engine(self):
+        return dl.DeviceEngine(self._device)
+
+    def get_loggers(self):
+        return {
+            "console": dl.ConsoleLogger(),
+            "csv": dl.CSVLogger(logdir=self._logdir),
+            "tensorboard": dl.TensorboardLogger(logdir=self._logdir),
+        }
+
+    @property
+    def stages(self):
+        return ["train"]
+
+    def predict_batch(self, batch, **kwargs):
+        images, _ = batch
+        return (images + self.model['generator'](images.to(self.device)).detach()) / 2
+
+    def get_callbacks(self, stage: str):
+        if self._gradient_penalty:
+            return {
+                'discriminator_criterion': dl.CriterionCallback(
+                    input_key='discriminator_output', target_key='gradient_penalty',
+                    metric_key="discriminator loss",
+                    criterion_key="discriminator_loss",
+                ),
+                'generator_criterion': dl.CriterionCallback(
+                    input_key='generator_fake', target_key='generator_fake',
+                    metric_key="generator loss",
+                    criterion_key="generator_loss",
+                ),
+                'attack_criterion': dl.CriterionCallback(
+                    input_key='attack', target_key='labels',
+                    metric_key="attack loss",
+                    criterion_key="attack_loss",
+                ),
+                'hinge_criterion': dl.CriterionCallback(
+                    input_key='hinge', target_key='hinge',
+                    metric_key="hinge loss",
+                    criterion_key="hinge_loss",
+                ),
+                'generator_optimizer': dl.OptimizerCallback(
+                    model_key="generator",
+                    optimizer_key="generator_optimizer",
+                    metric_key="generator loss"
+                ),
+                'discriminator_optimizer': dl.OptimizerCallback(
+                    model_key="discriminator",
+                    optimizer_key="discriminator_optimizer",
+                    metric_key="discriminator loss"
+                ),
+                'checkpoint': dl.CheckpointCallback(
+                    logdir=self._logdir
+                ),
+                "verbose": dl.TqdmCallback(),
+            }
+        else:
+            return {
+                'discriminator_criterion': dl.CriterionCallback(
+                    input_key='discriminator_real', target_key='discriminator_fake',
+                    metric_key="discriminator loss",
+                    criterion_key="discriminator_loss",
+                ),
+                'generator_criterion': dl.CriterionCallback(
+                    input_key='generator_fake', target_key='generator_fake',
+                    metric_key="generator loss",
+                    criterion_key="generator_loss",
+                ),
+                'attack_criterion': dl.CriterionCallback(
+                    input_key='attack', target_key='labels',
+                    metric_key="attack loss",
+                    criterion_key="attack_loss",
+                ),
+                'hinge_criterion': dl.CriterionCallback(
+                    input_key='hinge', target_key='hinge',
+                    metric_key="hinge loss",
+                    criterion_key="hinge_loss",
+                ),
+                'generator_optimizer': dl.OptimizerCallback(
+                    model_key="generator",
+                    optimizer_key="generator_optimizer",
+                    metric_key="generator loss"
+                ),
+                'discriminator_optimizer': dl.OptimizerCallback(
+                    model_key="discriminator",
+                    optimizer_key="discriminator_optimizer",
+                    metric_key="discriminator loss"
+                ),
+                'checkpoint': dl.CheckpointCallback(
+                    logdir=self._logdir
+                ),
+                "verbose": dl.TqdmCallback(),
+            }
+
+    def gradient_penalty(self, real_samples, fake_samples):
+        """Calculates the gradient penalty loss for WGAN GP"""
+        # Random weight term for interpolation between real and fake samples
+        alpha = torch.Tensor(np.random.random((real_samples.shape[0], 1, 1, 1))).to(device=self.device)
+        # Get random interpolation between real and fake samples
+        interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+        d_interpolates = self.model['discriminator'](interpolates)
+        fake = torch.autograd.Variable(torch.Tensor(real_samples.shape[0], 1).to(device=self.device).fill_(1.0),
+                                       requires_grad=False)
+        # Get gradient w.r.t. interpolates
+        gradients = torch.autograd.grad(
+            outputs=d_interpolates,
+            inputs=interpolates,
+            grad_outputs=fake,
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True,
+        )[0]
+        gradients = gradients.view(gradients.shape[0], -1)
+        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+        return gradient_penalty
+
+    def handle_batch(self, batch):
+        self.model['generator'].to(device=self.device).train()
+        self.model['discriminator'].to(device=self.device).train()
+
+        batch, labels = batch
+        batch = batch.to(device=self.device, dtype=torch.float32)
+
+        if labels is None:
+            labels = self._attacked_model(batch.detach()).argmax(dim=-1)
+
+        labels = labels.to(device=self.device)
+
+        fake_samples = (batch + self.model['generator'](batch).detach()) / 2
+        discriminator_real = self.model['discriminator'](batch)
+        discriminator_fake = self.model['discriminator'](fake_samples)
+        gradient_penalty = self.gradient_penalty(batch, fake_samples)
+
+        generator_fake = self.model['discriminator']((batch + self.model['generator'](batch)) / 2)
+
+        attack = self._attacked_model((batch + self.model['generator'](batch)) / 2)
+        hinge = self.model['generator'](batch)
+
+        self.batch = {
+            "discriminator_real": discriminator_real,
+            "discriminator_fake": discriminator_fake,
+            "discriminator_output": (discriminator_real, discriminator_fake),
+            "gradient_penalty": gradient_penalty,
+            "generator_fake": generator_fake,
+            "attack": attack,
+            "labels": labels,
+            "hinge": hinge,
+        }
+
+
+class CGANRunner(dl.Runner, ABC):
+    def __init__(self, batch_size, device):
+        super().__init__()
+        self._device = device
+        self._batch_size = batch_size
+
+    def get_engine(self):
+        return dl.DeviceEngine(self._device)
+
+    def get_loggers(self):
+        return {
+            "console": dl.ConsoleLogger(),
+            "csv": dl.CSVLogger(logdir=self._logdir),
+            "tensorboard": dl.TensorboardLogger(logdir=self._logdir),
+        }
+
+    @property
+    def stages(self):
+        return ["train"]
+
+    def predict_batch(self, batch, **kwargs):
+        images, _ = batch
+        return (images + self.model['generator'](images.to(self.device)).detach()) / 2
+
+    def handle_batch(self, batch):
+        self.model['generator'].to(device=self.device).train()
+        self.model['discriminator'].to(device=self.device).train()
+
+        batch, labels = batch
+        batch = batch.to(device=self.device, dtype=torch.float32)
+
+        if labels is None:
+            labels = self.model['attacked_model'](batch).argmax(dim=-1)
+
+        labels = labels.to(device=self.device)
+
+        discriminator_real = self.model['discriminator'](batch)
+        discriminator_fake = self.model['discriminator']((batch + self.model['generator'](batch).detach()) / 2)
+        discriminator_loss = self.criterion['discriminator_loss'](discriminator_real, discriminator_fake)
+        discriminator_loss.backward()
+
+        self.optimizer['discriminator_optimizer'].step()
+        self.optimizer['discriminator_optimizer'].zero_grad()
+
+        generator_fake = self.model['discriminator']((batch + self.model['generator'](batch)) / 2)
+        generator_loss = self.criterion['generator_loss'](generator_fake)
+        generator_loss.backward()
+
+        attack = self.model['attacked_model']((batch + self.model['generator'](batch)) / 2)
+        attack_loss = self.criterion['attack_loss'](attack, labels)
+        attack_loss.backward()
+
+        hinge = self.model['generator'](batch)
+        hinge_loss = self.criterion['hinge_loss'](hinge)
+        hinge_loss.backward()
+
+        discriminator_loss = self.criterion['discriminator_loss'](discriminator_real, discriminator_fake)
+        generator_loss = self.criterion['generator_loss'](generator_fake)
+        attack_loss = self.criterion['attack_loss']((batch + self.model['generator'](batch)) / 2,
+                                                    labels)
+        hinge_loss = self.criterion['hinge_loss'](
+            self.model['generator'](batch))
+
+        self.optimizer['generator_optimizer'].step()
+        self.optimizer['generator_optimizer'].zero_grad()
+
+        metrics = {'discriminator_loss': discriminator_loss.item(),
+                   'generator_loss': generator_loss.item(),
+                   'attack_loss': attack_loss.item(),
+                   'hinge_loss': hinge_loss.item()}
+
+        self.batch_metrics.update(metrics)
+        # for key in ['discriminator loss', 'generator loss', 'attack loss', 'hinge loss']:
+        #     self.metrics[key].update(self.batch_metrics[key].item(), self.batch_size)

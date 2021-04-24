@@ -1,29 +1,11 @@
-# def read_and_prep_images(img_paths,
-# transforms=[lambda x: x], transform=False, transform_add=0, img_height=IMAGE_SIZE, img_width=IMAGE_SIZE):
-#     if transform:
-#         imgs = [random.choice(transforms)
-#         (image=np.array(load_img(img_path, target_size=(img_height, img_width))))['image'] for img_path in img_paths]
-#     else:
-#         imgs = [load_img(img_path, target_size=(img_height, img_width)) for img_path in img_paths]
-#     samples = random.sample(imgs, transform_add)
-#     imgs.extend([random.choice(transforms)(image=np.array(samples[i]))['image'] for i in range(transform_add)])
-#     img_array = np.array([img_to_array(img) for img in imgs])
-#     output = np.array(preprocess_input(img_array))
-#     return(imgs, output)
-
 from skimage import io  # , transform
 from skimage.color import gray2rgb
 
 from sklearn.utils import shuffle
 
-import matplotlib.pyplot as plt
-
 import torch
 
-# import torch.nn as nn
 from torch.utils.data import Dataset
-# from torchvision import transforms, utils
-
 import os
 
 
