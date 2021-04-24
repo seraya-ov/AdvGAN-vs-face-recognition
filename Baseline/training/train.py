@@ -79,12 +79,12 @@ class Trainer(object):
         discriminator_fake = self.discriminator((batch + self.generator(batch)) / 2)
 
         if self.penalty:
-            gradient_penalty = self.gradient_penalty(batch, discriminator_fake)
+            gradient_penalty = self.gradient_penalty(batch, (batch + self.generator(batch)) / 2)
 
             self.discriminator_optimizer.zero_grad()
 
-            disc_loss = self.gan_loss.discriminator_loss((discriminator_real,
-                                                          discriminator_fake), gradient_penalty).item()
+            disc_loss = self.gan_loss.discriminator_loss(discriminator_real,
+                                                         discriminator_fake, gradient_penalty).item()
         else:
             self.discriminator_optimizer.zero_grad()
 

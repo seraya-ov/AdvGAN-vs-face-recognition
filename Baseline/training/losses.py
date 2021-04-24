@@ -41,7 +41,7 @@ class WGANLoss(object):
 
     @staticmethod
     def generator_loss(fake_output, _=None):
-        fake = -fake_output.squeeze()
+        fake = -fake_output.squeeze().mean()
         fake.backward()
         return fake.mean()
 
