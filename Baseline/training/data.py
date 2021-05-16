@@ -13,9 +13,9 @@ class FacesDataset(Dataset):
 
     def __init__(self, root_dir, transform=None):
         """
-        Args:
-            root_dir (string): Directory with all the images.
-            transform (callable, optional): Optional transform to be applied
+        Dataset loader
+            :param root_dir: Directory with all the images.
+            :param transform: Optional transform to be applied
                 on a sample.
         """
         self.root_dir = root_dir

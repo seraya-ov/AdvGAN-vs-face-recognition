@@ -3,3 +3,9 @@
 /data/
 /notebooks/attack_gan_logdir/
 /notebooks/base_classifier_logdir/
+/notebooks/dcgan_mnist_logs/models/
+/notebooks/wgan_mnist_logs/models/
+/notebooks/dcgan_mnist_logs/
+/notebooks/wgan_mnist_logs/
+/notebooks/attack_gan_logdir_bare/
+/notebooks/attack_wgan_logdir_bare/
